@@ -122,6 +122,9 @@ async def analyze_text(text: str = Form("")):
 
     try:
         result = await text_url_fraud_tool(text)
+        from core.indicators import build_explanation, evaluate_indicators
+        eval_res = evaluate_indicators(text=text)
+        result["explanation"] = build_explanation(score=eval_res["score"], text=text)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail="Анализ текста временно недоступен. Повторите попытку позже.") from e
@@ -130,6 +133,8 @@ async def analyze_text(text: str = Form("")):
 # ── POST /analyze/full (Hybrid Routed Analysis) ───────────────────────────────
 
 @app.post("/analyze/full", response_model=FullAnalysisResponse)
+@app.post("/analyze/explainable", response_model=FullAnalysisResponse)
+@app.post("/analyse/explainable", response_model=FullAnalysisResponse)
 async def analyze_full(
     file: Optional[UploadFile] = File(None),
     text: Optional[str] = Form(None)

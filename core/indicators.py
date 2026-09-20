@@ -268,3 +268,108 @@ def evaluate_indicators(
         "score_breakdown": score_breakdown,
         "sanitized_text": sanitized_text,
     }
+
+
+def build_explanation(
+    score: int,
+    text: Optional[str] = None,
+    sender: Optional[str] = None,
+    subject: Optional[str] = None,
+    has_image: bool = False,
+    image_indicators: Optional[List[Dict[str, Any]]] = None,
+    llm_confidence: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    Constructs the Explainable AI contract object for analysis endpoints.
+
+    Recommendation & Band Tiers:
+    - score >= 70: 'high'   -> 'Do not interact with this content. Report and delete.'
+    - 40 <= score <= 69: 'medium' -> 'Verify the sender independently before acting.'
+    - score < 40: 'low'     -> 'Low risk — standard caution.'
+
+    Confidence by Modality:
+    - Deterministic proxy: min(1.0, modality_points / 45.0)
+    - If LLM present: blend 0.7 * det + 0.3 * llm (documented in comment)
+    - Modalities not evaluated serialize as null.
+    """
+    # 1. Determine risk band and recommendation
+    if score >= 70:
+        risk_band = "high"
+        recommendation = "Do not interact with this content. Report and delete."
+    elif score >= 40:
+        risk_band = "medium"
+        recommendation = "Verify the sender independently before acting."
+    else:
+        risk_band = "low"
+        recommendation = "Low risk — standard caution."
+
+    # 2. Evaluate indicators
+    eval_result = evaluate_indicators(
+        text=text,
+        sender=sender,
+        subject=subject,
+        image_indicators=image_indicators
+    )
+    indicators = eval_result["indicators"]
+    score_breakdown = eval_result["score_breakdown"]
+
+    # If indicators empty and band low, fallback to friendly clean indicator
+    if not indicators and risk_band == "low":
+        indicators = [
+            {
+                "rule_id": "CLEAN",
+                "label": "No strong malicious signals detected",
+                "severity": 1,
+                "modality": "text",
+            }
+        ]
+
+    # Map indicators to rule_id -> modality for score breakdown
+    rule_modalities = {ind["rule_id"]: ind["modality"] for ind in indicators}
+
+    # 3. Calculate confidence per modality
+    # Text modality
+    text_conf = None
+    if text is not None and text.strip() != "":
+        text_points = sum(
+            item["points"] for item in score_breakdown
+            if rule_modalities.get(item["rule_id"]) == "text"
+        )
+        det_text = min(1.0, round(text_points / 45.0, 2))
+        # If LLM confidence is present, blend 0.7 * det + 0.3 * llm
+        if llm_confidence is not None:
+            text_conf = round(0.7 * det_text + 0.3 * max(0.0, min(1.0, float(llm_confidence))), 2)
+        else:
+            text_conf = det_text
+
+    # URL modality
+    url_conf = None
+    has_url_pattern = bool(text and ("http://" in text or "https://" in text or ".xyz" in text or ".top" in text))
+    if has_url_pattern or any(ind.get("modality") == "url" for ind in indicators):
+        url_points = sum(
+            item["points"] for item in score_breakdown
+            if rule_modalities.get(item["rule_id"]) == "url"
+        )
+        url_conf = min(1.0, round(url_points / 45.0, 2))
+
+    # Image modality
+    image_conf = None
+    if has_image:
+        image_points = sum(
+            item["points"] for item in score_breakdown
+            if rule_modalities.get(item["rule_id"]) == "image"
+        )
+        image_conf = min(1.0, round(image_points / 45.0, 2))
+
+    return {
+        "indicators": indicators,
+        "score_breakdown": score_breakdown,
+        "confidence_by_modality": {
+            "text": text_conf,
+            "url": url_conf,
+            "image": image_conf,
+        },
+        "risk_band": risk_band,
+        "recommendation": recommendation,
+    }
+

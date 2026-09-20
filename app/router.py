@@ -12,6 +12,7 @@ from tools.stego_tool import stego_security_tool
 from tools.vision_tool import vision_fraud_tool
 from tools.text_url_tool import text_url_fraud_tool
 from tools.llm_provider import call_text_llm, is_valid_key
+from core.indicators import build_explanation, evaluate_indicators
 
 class HybridRouter:
     def __init__(self):
@@ -51,22 +52,11 @@ class HybridRouter:
         if not remote_provider:
             return "local"
 
-        # Decision heuristics
-        # 1. Image checks
-        if size_kb is not None:
-            if size_kb >= 100.0:
-                return remote_provider  # Large image -> use high quality remote model
-            else:
-                return "local"  # Small thumbnail -> local is fine
-
-        # 2. Text checks
-        if text_len is not None:
-            if text_len >= 200 or has_phishing_hints:
-                return remote_provider  # Long text or phishing signs -> use remote model
-            else:
-                return "local"  # Short, simple text -> local model
-
-        return "local"
+        requires_remote = (
+            (size_kb is not None and size_kb >= 100.0)
+            or (text_len is not None and (text_len >= 200 or has_phishing_hints))
+        )
+        return remote_provider if requires_remote else "local"
 
     def _calculate_fraud_probability(self, overall_risk: str) -> int:
         mapping = {
@@ -105,7 +95,7 @@ without using overly technical jargon. Do not use formatting like markdown or li
         # we configure the route.
         try:
             # Run text completion
-            summary = await asyncio.to_thread(call_text_llm, prompt)
+            summary = await asyncio.to_thread(call_text_llm, prompt, provider)
             return summary.strip()
         except Exception as e:
             return f"Failed to generate unified summary due to LLM error: {e}"
@@ -122,11 +112,10 @@ without using overly technical jargon. Do not use formatting like markdown or li
         size_kb = None
         has_phishing_hints = False
         text_len = len(text) if text else None
+        is_image = False
 
         if file_path and os.path.exists(file_path):
             # ── Local Stego Scan (Always Local) ──────────────────────────────────
-            tasks["stego"] = stego_security_tool(file_path)
-            
             # File size detection for vision routing
             size_bytes = os.path.getsize(file_path)
             size_kb = size_bytes / 1024.0
@@ -134,7 +123,7 @@ without using overly technical jargon. Do not use formatting like markdown or li
             # ── Multimodal Vision Scan (Routed) ───────────────────────────────────
             ext = os.path.splitext(file_path)[1].lower()
             if ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]:
-                tasks["vision"] = vision_fraud_tool(file_path)
+                is_image = True
 
         if text:
             # ── Text Analysis Heuristics ───────────────────────────────────────
@@ -144,9 +133,7 @@ without using overly technical jargon. Do not use formatting like markdown or li
             if any(w in text_lower for w in phishing_words) or "http" in text_lower:
                 has_phishing_hints = True
 
-            tasks["text"] = text_url_fraud_tool(text)
-
-        if not tasks:
+        if not file_path and not text:
             return {
                 "overall_risk": "unknown",
                 "fraud_probability": 0,
@@ -156,15 +143,20 @@ without using overly technical jargon. Do not use formatting like markdown or li
                     "selected_provider": "local",
                     "tokens_used": 0,
                     "cost_estimate": 0.0
-                }
+                },
+                "explanation": build_explanation(score=0, text="")
             }
 
         # ── Determine routed provider ──────────────────────────────────────────
         # If there is an image, visual routing dominates. Otherwise text routing.
         routed_provider = self._determine_llm_provider(size_kb=size_kb, text_len=text_len, has_phishing_hints=has_phishing_hints)
 
-        # Temporarily adapt environment settings to guide our providers if needed
-        # (Though they are already set up to check keys, router matches their precedence)
+        if file_path and os.path.exists(file_path):
+            tasks["stego"] = stego_security_tool(file_path)
+            if is_image:
+                tasks["vision"] = vision_fraud_tool(file_path, provider=routed_provider)
+        if text:
+            tasks["text"] = text_url_fraud_tool(text, provider=routed_provider)
         
         # Execute tools concurrently
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -198,7 +190,23 @@ without using overly technical jargon. Do not use formatting like markdown or li
 
         # Metadata metrics
         cost_estimate = self._get_provider_cost(routed_provider)
-        tokens_estimate = 0 if routed_provider == "local" else 150 # Simulated average tokens
+        tokens_estimate = None
+
+        # Build Explainable AI explanation object
+        image_indicators = []
+        if "vision" in agent_reports and isinstance(agent_reports["vision"], dict):
+            for finding in agent_reports["vision"].get("visual_findings", []):
+                image_indicators.append({"label": finding, "severity": 2, "modality": "image"})
+        if "stego" in agent_reports and isinstance(agent_reports["stego"], dict):
+            for word in agent_reports["stego"].get("threat_words", []):
+                image_indicators.append({"label": f"Threat keyword: {word}", "severity": 2, "modality": "image"})
+
+        explanation = build_explanation(
+            score=fraud_probability,
+            text=text,
+            has_image=bool(file_path and os.path.exists(file_path)),
+            image_indicators=image_indicators
+        )
 
         return {
             "overall_risk": overall_risk,
@@ -209,5 +217,6 @@ without using overly technical jargon. Do not use formatting like markdown or li
                 "selected_provider": routed_provider,
                 "tokens_used": tokens_estimate,
                 "cost_estimate": cost_estimate
-            }
+            },
+            "explanation": explanation
         }

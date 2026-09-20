@@ -18,10 +18,32 @@ class StegoResponse(BaseModel):
     summary: str = Field(..., description="Professional English verdict summary of the forensic scan")
 
 
+# ── Explainable AI response models ────────────────────────────────────────────
+
+class ConfidenceByModality(BaseModel):
+    text: Optional[float] = Field(None, description="Confidence score for text modality (0.0 to 1.0) or null if unanalyzed")
+    url: Optional[float] = Field(None, description="Confidence score for URL modality (0.0 to 1.0) or null if unanalyzed")
+    image: Optional[float] = Field(None, description="Confidence score for image/forensic modality (0.0 to 1.0) or null if unanalyzed")
+
+
+class ScoreBreakdownItem(BaseModel):
+    rule_id: str = Field(..., description="Detection rule identifier")
+    points: int = Field(..., description="Weighted contribution points to overall score")
+
+
+class ExplanationResponse(BaseModel):
+    indicators: List[Any] = Field(default_factory=list, description="List of detected indicator objects or descriptors")
+    score_breakdown: List[ScoreBreakdownItem] = Field(default_factory=list, description="Per-rule point breakdown")
+    confidence_by_modality: ConfidenceByModality = Field(..., description="Confidence scores broken down by modality")
+    risk_band: str = Field(..., description="Risk tier: 'low', 'medium', or 'high'")
+    recommendation: str = Field(..., description="Actionable security advice for the user")
+
+
 class TextResponse(BaseModel):
     risk_level: str = Field(..., description="Risk tier: 'low', 'medium', 'high', or 'critical'")
     text_findings: List[str] = Field(..., description="List of text/URL fraud indicators detected")
     summary: str = Field(..., description="Professional English verdict summary of the text scan")
+    explanation: Optional[ExplanationResponse] = Field(None, description="Explainable AI breakdown")
 
 
 # ── Response models for the hybrid router ─────────────────────────────────────
@@ -38,3 +60,5 @@ class FullAnalysisResponse(BaseModel):
     agent_reports: Dict[str, Any] = Field(..., description="Individual tool responses (stego, vision, text)")
     final_summary: str = Field(..., description="Unified final summary synthesized from all active agents")
     router_metadata: RouterMetadata = Field(..., description="Metadata from the hybrid provider routing decision")
+    explanation: Optional[ExplanationResponse] = Field(None, description="Explainable AI breakdown with deterministic rules and recommendation")
+
