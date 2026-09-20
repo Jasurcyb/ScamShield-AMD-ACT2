@@ -1,7 +1,7 @@
 import os
 import sys
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 # Ensure parent directory is on sys.path so 'tools', 'analyzer', 'database' can be imported
@@ -59,9 +59,30 @@ async def add_security_headers(request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     return response
 
+from fastapi.responses import HTMLResponse, FileResponse
+from starlette.staticfiles import StaticFiles
+
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if os.path.exists(_STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+
 @app.get("/")
-def read_root():
+def read_root(request: Request):
+    accept = request.headers.get("accept", "")
+    index_path = os.path.join(_STATIC_DIR, "index.html")
+    if "text/html" in accept and os.path.exists(index_path):
+        return FileResponse(index_path, media_type="text/html")
     return {"message": "Welcome to ScamShield API. Visit /docs for Swagger documentation."}
+
+
+@app.get("/lab", response_class=HTMLResponse)
+@app.get("/app", response_class=HTMLResponse)
+def read_lab():
+    index_path = os.path.join(_STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path, media_type="text/html")
+    return HTMLResponse("<h3>Threat Lab UI is building...</h3>")
 
 
 # ── POST /analyze/vision ──────────────────────────────────────────────────────

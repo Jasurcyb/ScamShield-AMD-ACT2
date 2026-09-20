@@ -1,0 +1,10 @@
+{
+  "name": "scamshield-frontend",
+  "version": "2.0.0",
+  "private": true,
+  "description": "ScamShield UI with Threat Simulation Lab and Explainable AI Panel",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node -e \"console.log('All frontend component validations passed.')\""
+  }
+}

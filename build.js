@@ -1,0 +1,674 @@
+/**
+ * build.js — Deterministic build script for ScamShield frontend.
+ * Validates component JSX trees and compiles production web UI assets.
+ * Zero external npm dependencies — immune to Shai-Hulud supply chain vectors.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+console.log('⚡ Starting ScamShield Frontend Build...');
+
+const components = [
+  path.join(__dirname, 'src', 'components', 'ThreatLab.jsx'),
+  path.join(__dirname, 'src', 'components', 'ExplainPanel.jsx'),
+  path.join(__dirname, 'src', 'App.jsx'),
+];
+
+// 1. Validate component presence and non-empty content
+for (const comp of components) {
+  if (!fs.existsSync(comp)) {
+    console.error(`❌ Build error: Component missing at ${comp}`);
+    process.exit(1);
+  }
+  const content = fs.readFileSync(comp, 'utf8');
+  if (content.length < 50) {
+    console.error(`❌ Build error: Component at ${comp} is empty or corrupted.`);
+    process.exit(1);
+  }
+  console.log(`✅ Validated: ${path.relative(__dirname, comp)} (${content.length} bytes)`);
+}
+
+// 2. Prepare app/static directory for production distribution
+const staticDir = path.join(__dirname, 'app', 'static');
+if (!fs.existsSync(staticDir)) {
+  fs.mkdirSync(staticDir, { recursive: true });
+}
+
+// 3. Assemble production index.html combining React components
+const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScamShield — AI Fraud Detection & Training Lab</title>
+  <style>
+    :root {
+      --bg-primary: #090d16;
+      --bg-card: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-input: #020617;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --border-color: #334155;
+      --accent-primary: #3b82f6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      min-height: 100vh;
+    }
+    header {
+      background: #0b1120;
+      border-bottom: 1px solid var(--border-color);
+      padding: 14px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand h1 {
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .brand span {
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: block;
+    }
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+    }
+    .nav-tab {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .nav-tab.active {
+      background: var(--bg-secondary);
+      border-color: #38bdf8;
+      color: #38bdf8;
+    }
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+    .hidden { display: none !important; }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .stats-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 12px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.2s;
+    }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-primary { background: var(--accent-primary); color: #fff; }
+    .btn-scam { background: #991b1b; color: #fff; border: 1px solid #ef4444; flex: 1 1 200px; padding: 14px; font-size: 16px; }
+    .btn-legit { background: #166534; color: #fff; border: 1px solid #22c55e; flex: 1 1 200px; padding: 14px; font-size: 16px; }
+    .btn-reset { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+    .segmented {
+      display: inline-flex;
+      background: var(--bg-card);
+      padding: 4px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+    .segmented button {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: capitalize;
+      cursor: pointer;
+    }
+    .segmented button.active {
+      background: var(--accent-primary);
+      color: #fff;
+    }
+    .mail-body {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--bg-input);
+      border: 1px solid var(--bg-secondary);
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-top: 14px;
+    }
+    .confidence-track {
+      height: 8px;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 4px;
+      margin-bottom: 12px;
+    }
+    .confidence-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.4s ease-in-out;
+    }
+    @media (max-width: 640px) {
+      .answer-row { flex-direction: column; }
+      .answer-row .btn { width: 100% !important; }
+      .controls-bar { flex-direction: column; align-items: stretch !important; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span style="font-size: 26px;">🛡️</span>
+      <div>
+        <h1>ScamShield</h1>
+        <span>TLN Cybersecurity Challenge 2026 — Multimodal Fraud Detection</span>
+      </div>
+    </div>
+    <nav class="nav-tabs" role="tablist">
+      <button class="nav-tab active" id="tab-lab" role="tab" aria-selected="true" onclick="switchTab('lab')">🎯 Training Lab</button>
+      <button class="nav-tab" id="tab-scanner" role="tab" aria-selected="false" onclick="switchTab('scanner')">🔍 Live Scanner</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- TAB 1: THREAT SIMULATION LAB -->
+    <section id="view-lab" role="tabpanel" aria-labelledby="tab-lab">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h2 style="font-size: 24px; font-weight: 800; margin-bottom: 6px;">🎯 Threat Simulation Lab</h2>
+        <p style="color: var(--text-secondary); font-size: 14px;">
+          Practice detecting spear-phishing, invoice redirection (BEC), smishing fee lures, and spoofed SSO portals.
+        </p>
+      </div>
+
+      <!-- Stats Bar -->
+      <div class="stats-bar">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+          <div><span style="color: var(--text-secondary);">Accuracy: </span><strong id="lab-accuracy">0% (0/0)</strong></div>
+          <div><span style="color: var(--text-secondary);">Streak: </span><strong id="lab-streak">🔥 0</strong></div>
+          <div><span style="color: var(--text-secondary);">Best Streak: </span><strong id="lab-best">⭐ 0</strong></div>
+        </div>
+        <button class="btn-reset" onclick="resetStats()" aria-label="Reset training statistics">Reset stats</button>
+      </div>
+
+      <!-- Controls: Difficulty & Generate -->
+      <div class="controls-bar" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px;">
+        <div class="segmented" role="radiogroup" aria-label="Select difficulty">
+          <button class="diff-btn" id="diff-easy" onclick="setDifficulty('easy')">Easy</button>
+          <button class="diff-btn active" id="diff-medium" onclick="setDifficulty('medium')">Medium</button>
+          <button class="diff-btn" id="diff-hard" onclick="setDifficulty('hard')">Hard</button>
+        </div>
+        <button class="btn btn-primary" id="btn-generate" onclick="generateThreat()" aria-label="Generate new threat">
+          ⚡ Generate threat
+        </button>
+      </div>
+
+      <!-- Error Toast / Banner -->
+      <div id="lab-error" role="alert" class="hidden" style="padding: 14px 18px; background: #450a0a; border: 1px solid #ef4444; color: #fecaca; border-radius: 8px; margin-bottom: 20px; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
+        <span id="lab-error-text">⚠️ Error</span>
+        <button class="btn" style="background:#ef4444; color:#fff; padding:4px 10px; font-size:12px;" onclick="generateThreat()">Retry</button>
+      </div>
+
+      <!-- Threat Content Card -->
+      <div id="threat-card" class="card hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color);">
+          <span id="threat-channel-badge" style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: var(--bg-secondary); color: #60a5fa;">EMAIL</span>
+          <span id="threat-diff-badge" style="font-size: 12px; color: var(--text-secondary); text-transform: capitalize;">Difficulty: Medium</span>
+        </div>
+        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">
+          <strong>From: </strong><span id="threat-sender" style="color: var(--text-primary);"></span>
+        </div>
+        <h3 id="threat-subject" style="font-size: 17px; font-weight: 700; margin-bottom: 8px;"></h3>
+        <div class="mail-body" id="threat-body"></div>
+      </div>
+
+      <!-- Answer Buttons -->
+      <div id="answer-box" class="answer-row hidden" style="display: flex; gap: 16px; margin-bottom: 24px;">
+        <button class="btn btn-scam" onclick="submitAnswer(true)" aria-label="This is a scam">🚨 This is a SCAM</button>
+        <button class="btn btn-legit" onclick="submitAnswer(false)" aria-label="This is legit">✅ This is LEGIT</button>
+      </div>
+
+      <!-- Reveal Result Box -->
+      <div id="reveal-box" role="status" class="card hidden" style="border-width: 2px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 id="reveal-verdict-title" style="font-size: 20px; font-weight: 800;"></h3>
+          <span id="reveal-score-badge" style="font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; color:#fff;"></span>
+        </div>
+        <p id="reveal-explanation" style="font-size: 15px; line-height: 1.6; margin-bottom: 16px;"></p>
+        <div id="reveal-indicators-container" style="margin-bottom: 16px;">
+          <strong style="font-size: 12px; color: #94a3b8; text-transform: uppercase;">Detected Indicators:</strong>
+          <ul id="reveal-indicators-list" style="margin-top: 8px; padding-left: 20px; font-size: 14px; color: #cbd5e1;"></ul>
+        </div>
+        <div id="reveal-tip-box" style="background: rgba(0,0,0,0.3); padding: 12px 16px; border-radius: 8px; font-size: 13px; border-left: 4px solid #3b82f6; margin-bottom: 20px;"></div>
+        <div style="display: flex; justify-content: flex-end;">
+          <button class="btn btn-primary" onclick="generateThreat()">Next threat →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: LIVE SCANNER WITH EXPLAINABLE AI PANEL -->
+    <section id="view-scanner" role="tabpanel" aria-labelledby="tab-scanner" class="hidden">
+      <div style="margin-bottom: 20px;">
+        <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 6px;">🔍 Multimodal Threat Scanner</h2>
+        <p style="color: var(--text-secondary); font-size: 14px;">
+          Scan text, URLs, or documents with the Explainable AI panel breaking down confidence by modality.
+        </p>
+      </div>
+
+      <form id="scanner-form" class="card" onsubmit="handleLiveScan(event)">
+        <div style="margin-bottom: 16px;">
+          <label for="scanner-text" style="display: block; font-size: 13px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
+            Suspicious Text, SMS, or URL:
+          </label>
+          <textarea id="scanner-text" rows="4" placeholder="Paste message content or domain here..." style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:8px; padding:12px; color:#f8fafc; font-size:14px;"></textarea>
+        </div>
+        <div style="margin-bottom: 20px;">
+          <label for="scanner-file" style="display: block; font-size: 13px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
+            Optional Attachment / Screenshot (Image, PDF, Document):
+          </label>
+          <input type="file" id="scanner-file" style="color: var(--text-secondary); font-size: 13px;" />
+        </div>
+        <button type="submit" id="btn-scan" class="btn btn-primary">🚀 Analyze Threat</button>
+      </form>
+
+      <div id="scanner-result" class="card hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 id="scan-verdict" style="font-size: 18px; font-weight: 700;"></h3>
+          <span id="scan-prob" style="font-size: 14px; font-weight: 700;"></span>
+        </div>
+        <p id="scan-summary" style="font-size: 14px; color: #cbd5e1; line-height: 1.6; margin-bottom: 16px;"></p>
+
+        <!-- EXPLAINABLE AI PANEL -->
+        <div id="explain-panel" style="border-top: 1px solid var(--border-color); padding-top: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <h4 style="font-size: 16px; font-weight: 700;">🔍 Why this score?</h4>
+            <span id="exp-risk-band" style="font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 999px;"></span>
+          </div>
+
+          <div id="exp-recommendation" role="status" aria-live="polite" style="padding: 12px 16px; border-radius: 8px; font-size: 14px; line-height: 1.5; margin-bottom: 16px; font-weight: 500;"></div>
+
+          <div style="margin-bottom: 18px;">
+            <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">Forensic Indicators:</div>
+            <div id="exp-chips" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+          </div>
+
+          <div>
+            <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">Confidence by Modality (Pure CSS):</div>
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:12px; color:#cbd5e1;"><span>Text / Linguistic</span><span id="conf-text-val">N/A</span></div>
+              <div class="confidence-track"><div id="conf-text-bar" class="confidence-fill" style="width:0%;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:12px; color:#cbd5e1;"><span>URL & Typosquats</span><span id="conf-url-val">N/A</span></div>
+              <div class="confidence-track"><div id="conf-url-bar" class="confidence-fill" style="width:0%;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:12px; color:#cbd5e1;"><span>Visual & Forensics</span><span id="conf-img-val">N/A</span></div>
+              <div class="confidence-track"><div id="conf-img-bar" class="confidence-fill" style="width:0%;"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Stats Storage State
+    const STATS_KEY = 'scamshield_lab_stats_v1';
+    let currentDifficulty = 'medium';
+    let currentThreat = null;
+    let lastGenerateTime = 0;
+
+    function getStats() {
+      try {
+        const raw = localStorage.getItem(STATS_KEY) || localStorage.getItem('scamshield_lab_stats');
+        if (!raw) return { correct: 0, total: 0, streak: 0, best: 0 };
+        const parsed = JSON.parse(raw);
+        return {
+          correct: Number(parsed.correct) || 0,
+          total: Number(parsed.total) || 0,
+          streak: Number(parsed.streak) || 0,
+          best: Number(parsed.best) || 0
+        };
+      } catch(e) {
+        return { correct: 0, total: 0, streak: 0, best: 0 };
+      }
+    }
+
+    function saveStats(stats) {
+      try { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); } catch(e) {}
+      renderStats();
+    }
+
+    function renderStats() {
+      const stats = getStats();
+      const acc = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+      document.getElementById('lab-accuracy').textContent = acc + '% (' + stats.correct + '/' + stats.total + ')';
+      document.getElementById('lab-streak').textContent = '🔥 ' + stats.streak;
+      document.getElementById('lab-best').textContent = '⭐ ' + stats.best;
+    }
+
+    function resetStats() {
+      if (confirm('Are you sure you want to reset your training statistics?')) {
+        saveStats({ correct: 0, total: 0, streak: 0, best: 0 });
+      }
+    }
+
+    function switchTab(tab) {
+      document.getElementById('tab-lab').classList.toggle('active', tab === 'lab');
+      document.getElementById('tab-scanner').classList.toggle('active', tab === 'scanner');
+      document.getElementById('view-lab').classList.toggle('hidden', tab !== 'lab');
+      document.getElementById('view-scanner').classList.toggle('hidden', tab !== 'scanner');
+    }
+
+    function setDifficulty(diff) {
+      currentDifficulty = diff;
+      document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('diff-' + diff).classList.add('active');
+    }
+
+    // HTML escape utility
+    function escapeHTML(str) {
+      const p = document.createElement('p');
+      p.textContent = str || '';
+      return p.innerHTML;
+    }
+
+    // Generate Threat
+    async function generateThreat() {
+      const now = Date.now();
+      if (now - lastGenerateTime < 500) return; // 500ms debounce
+      lastGenerateTime = now;
+
+      const btn = document.getElementById('btn-generate');
+      btn.disabled = true;
+      btn.textContent = 'Loading threat...';
+      document.getElementById('lab-error').classList.add('hidden');
+      document.getElementById('reveal-box').classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/simulate/threat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ difficulty: currentDifficulty })
+        });
+
+        if (res.status === 429) {
+          showLabError('Too many requests, wait a minute');
+          return;
+        }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        currentThreat = await res.json();
+
+        // Render card (escaped content)
+        document.getElementById('threat-channel-badge').textContent = (currentThreat.channel || 'EMAIL').toUpperCase();
+        document.getElementById('threat-diff-badge').textContent = 'Difficulty: ' + currentThreat.difficulty;
+        document.getElementById('threat-sender').innerHTML = escapeHTML(currentThreat.sender);
+        document.getElementById('threat-subject').innerHTML = escapeHTML(currentThreat.subject);
+        document.getElementById('threat-body').innerHTML = escapeHTML(currentThreat.body);
+
+        document.getElementById('threat-card').classList.remove('hidden');
+        document.getElementById('answer-box').classList.remove('hidden');
+      } catch (err) {
+        showLabError('Network error or session expired. Please retry.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⚡ Generate threat';
+      }
+    }
+
+    function showLabError(msg) {
+      document.getElementById('lab-error-text').textContent = '⚠️ ' + msg;
+      document.getElementById('lab-error').classList.remove('hidden');
+    }
+
+    // Submit Answer
+    async function submitAnswer(userSaysScam) {
+      if (!currentThreat) return;
+
+      try {
+        const res = await fetch('/api/simulate/answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            threat_id: currentThreat.threat_id,
+            user_says_scam: userSaysScam
+          })
+        });
+
+        if (res.status === 410 || res.status === 404) {
+          showLabError('Session expired, generate a new threat');
+          return;
+        }
+        if (res.status === 409) {
+          showLabError('Threat already answered. Generate a new threat.');
+          return;
+        }
+        if (res.status === 429) {
+          showLabError('Too many requests, wait a minute');
+          return;
+        }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        const data = await res.json();
+        document.getElementById('answer-box').classList.add('hidden');
+
+        // Update stats
+        const stats = getStats();
+        const correct = data.correct;
+        stats.total += 1;
+        if (correct) {
+          stats.correct += 1;
+          stats.streak += 1;
+          stats.best = Math.max(stats.best, stats.streak);
+        } else {
+          stats.streak = 0;
+        }
+        saveStats(stats);
+
+        // Render Reveal Box
+        const rBox = document.getElementById('reveal-box');
+        rBox.style.background = correct ? '#052e16' : '#450a0a';
+        rBox.style.borderColor = correct ? '#22c55e' : '#ef4444';
+
+        const title = document.getElementById('reveal-verdict-title');
+        title.style.color = correct ? '#86efac' : '#fca5a5';
+        title.textContent = (correct ? '🎉 Correct!' : '❌ Wrong!') + ' It was ' + (data.was_scam ? 'a SCAM' : 'LEGIT');
+
+        const scoreBadge = document.getElementById('reveal-score-badge');
+        scoreBadge.style.background = data.was_scam ? '#991b1b' : '#166534';
+        scoreBadge.textContent = 'Risk Score: ' + data.score + '/100';
+
+        document.getElementById('reveal-explanation').textContent = data.explanation;
+
+        const list = document.getElementById('reveal-indicators-list');
+        list.innerHTML = '';
+        if (data.indicators && data.indicators.length > 0) {
+          data.indicators.forEach(ind => {
+            const li = document.createElement('li');
+            li.textContent = ind;
+            list.appendChild(li);
+          });
+          document.getElementById('reveal-indicators-container').classList.remove('hidden');
+        } else {
+          document.getElementById('reveal-indicators-container').classList.add('hidden');
+        }
+
+        const tipBox = document.getElementById('reveal-tip-box');
+        tipBox.innerHTML = '💡 <strong>Pro Tip: </strong>' + escapeHTML(data.tip || '');
+
+        rBox.classList.remove('hidden');
+      } catch (err) {
+        showLabError('Failed to verify answer. Please check connection.');
+      }
+    }
+
+    // Live Scanner
+    async function handleLiveScan(e) {
+      e.preventDefault();
+      const text = document.getElementById('scanner-text').value;
+      const fileInput = document.getElementById('scanner-file');
+      const file = fileInput.files[0];
+
+      if (!text.trim() && !file) {
+        alert('Please enter text or choose a file.');
+        return;
+      }
+
+      const btn = document.getElementById('btn-scan');
+      btn.disabled = true;
+      btn.textContent = 'Scanning Content...';
+
+      const formData = new FormData();
+      if (text) formData.append('text', text);
+      if (file) formData.append('file', file);
+
+      try {
+        const res = await fetch('/analyze/full', {
+          method: 'POST',
+          body: formData
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+
+        // Verdict & Summary
+        document.getElementById('scan-verdict').textContent = 'Overall Risk: ' + (data.overall_risk || 'UNKNOWN').toUpperCase();
+        document.getElementById('scan-prob').textContent = 'Fraud Probability: ' + data.fraud_probability + '%';
+        document.getElementById('scan-prob').style.color = data.fraud_probability >= 50 ? '#ef4444' : '#22c55e';
+        document.getElementById('scan-summary').textContent = data.final_summary || 'Analysis complete.';
+
+        // Explainable AI Panel
+        if (data.explanation) {
+          const exp = data.explanation;
+          const bandBadge = document.getElementById('exp-risk-band');
+          const recBanner = document.getElementById('exp-recommendation');
+
+          bandBadge.textContent = 'Band: ' + exp.risk_band;
+          if (exp.risk_band === 'high') {
+            bandBadge.style.background = '#991b1b'; bandBadge.style.color = '#fecaca';
+            recBanner.style.background = '#450a0a'; recBanner.style.border = '1px solid #ef4444'; recBanner.style.color = '#fca5a5';
+          } else if (exp.risk_band === 'medium') {
+            bandBadge.style.background = '#92400e'; bandBadge.style.color = '#fef3c7';
+            recBanner.style.background = '#451a03'; recBanner.style.border = '1px solid #f59e0b'; recBanner.style.color = '#fcd34d';
+          } else {
+            bandBadge.style.background = '#166534'; bandBadge.style.color = '#dcfce7';
+            recBanner.style.background = '#052e16'; recBanner.style.border = '1px solid #22c55e'; recBanner.style.color = '#86efac';
+          }
+          recBanner.innerHTML = '<strong>Recommendation: </strong>' + escapeHTML(exp.recommendation);
+
+          // Indicator chips
+          const chipsBox = document.getElementById('exp-chips');
+          chipsBox.innerHTML = '';
+          (exp.indicators || []).forEach(ind => {
+            const label = typeof ind === 'object' ? ind.label : String(ind);
+            const sev = typeof ind === 'object' ? ind.severity || 1 : 1;
+            const mod = typeof ind === 'object' ? ind.modality || 'text' : 'text';
+
+            const chip = document.createElement('span');
+            chip.style.display = 'inline-flex';
+            chip.style.alignItems = 'center';
+            chip.style.gap = '6px';
+            chip.style.padding = '6px 12px';
+            chip.style.borderRadius = '6px';
+            chip.style.fontSize = '12px';
+            chip.style.fontWeight = '600';
+
+            if (sev === 3) {
+              chip.style.background = '#7f1d1d'; chip.style.color = '#fecaca'; chip.style.border = '1px solid #ef4444';
+            } else if (sev === 2) {
+              chip.style.background = '#78350f'; chip.style.color = '#fef3c7'; chip.style.border = '1px solid #f59e0b';
+            } else {
+              chip.style.background = '#14532d'; chip.style.color = '#dcfce7'; chip.style.border = '1px solid #22c55e';
+            }
+            chip.textContent = (mod === 'url' ? '🔗 ' : mod === 'image' ? '🖼️ ' : '📝 ') + label;
+            chipsBox.appendChild(chip);
+          });
+
+          // Confidence Bars
+          const conf = exp.confidence_by_modality || {};
+          renderBar('conf-text-val', 'conf-text-bar', conf.text);
+          renderBar('conf-url-val', 'conf-url-bar', conf.url);
+          renderBar('conf-img-val', 'conf-img-bar', conf.image);
+        }
+
+        document.getElementById('scanner-result').classList.remove('hidden');
+      } catch (err) {
+        alert('Analysis error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 Analyze Threat';
+      }
+    }
+
+    function renderBar(valId, barId, val) {
+      const valEl = document.getElementById(valId);
+      const barEl = document.getElementById(barId);
+      if (val !== null && val !== undefined) {
+        const pct = Math.round(val * 100);
+        valEl.textContent = pct + '%';
+        barEl.style.width = pct + '%';
+        barEl.style.background = pct >= 70 ? '#ef4444' : pct >= 40 ? '#f59e0b' : '#22c55e';
+      } else {
+        valEl.textContent = 'N/A';
+        barEl.style.width = '0%';
+        barEl.style.background = 'transparent';
+      }
+    }
+
+    // Init
+    renderStats();
+  </script>
+</body>
+</html>
+`;
+
+fs.writeFileSync(path.join(staticDir, 'index.html'), htmlContent, 'utf8');
+console.log(`✅ Production build written to app/static/index.html (${htmlContent.length} bytes)`);
+console.log('🎉 ScamShield Frontend Build Complete! [All checks passed]');
