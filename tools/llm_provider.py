@@ -89,7 +89,7 @@ def is_valid_key(key: str | None) -> bool:
 
 # ── Text-only LLM call ────────────────────────────────────────────────────────
 
-def call_text_llm(prompt: str) -> str:
+def call_text_llm(prompt: str, provider: str | None = None) -> str:
     """
     Send a text prompt to the best available LLM provider and return the
     raw text response. Preference order: Anthropic → Gemini → Fireworks → Ollama.
@@ -98,14 +98,30 @@ def call_text_llm(prompt: str) -> str:
     gemini_key = os.environ.get("GEMINI_API_KEY")
     fireworks_key = os.environ.get("FIREWORKS_API_KEY")
 
+    if provider == "local":
+        return _call_ollama_text(prompt)
+    if provider == "anthropic":
+        if not is_valid_key(anthropic_key):
+            raise RuntimeError("Anthropic provider was selected without a valid API key.")
+        return _call_anthropic_text(anthropic_key, prompt)
+    if provider == "gemini":
+        if not is_valid_key(gemini_key):
+            raise RuntimeError("Gemini provider was selected without a valid API key.")
+        return _call_gemini_text(gemini_key, prompt)
+    if provider == "fireworks":
+        if not is_valid_key(fireworks_key):
+            raise RuntimeError("Fireworks provider was selected without a valid API key.")
+        return call_fireworks_text(prompt)
+    if provider is not None:
+        raise ValueError(f"Unknown LLM provider: {provider}")
+
     if is_valid_key(anthropic_key):
         return _call_anthropic_text(anthropic_key, prompt)
-    elif is_valid_key(gemini_key):
+    if is_valid_key(gemini_key):
         return _call_gemini_text(gemini_key, prompt)
-    elif is_valid_key(fireworks_key):
+    if is_valid_key(fireworks_key):
         return call_fireworks_text(prompt)
-    else:
-        return _call_ollama_text(prompt)
+    return _call_ollama_text(prompt)
 
 
 # ── Anthropic backend ─────────────────────────────────────────────────────────

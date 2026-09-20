@@ -261,6 +261,14 @@ async def stego_security_tool(file_path: str) -> dict:
     )
 
     is_critical = verdict_status == "ОПАСНО" or bool(ctf_flags) or bool(threat_words)
+    # CTF-like strings and suspicious words warrant review, but they are not
+    # proof of an active threat on their own. Reserve the critical verdict for
+    # a confirmed malicious archive or an auto-executing macro.
+    if ctf_flags or threat_words:
+        archive_is_dangerous = macro_analysis["archive"].get("status") == "danger"
+        macro_details = macro_analysis["word_macro"].get("details", "")
+        is_critical = archive_is_dangerous or "AutoExec" in macro_details
+
     risk_level  = _classify_risk(danger_score, is_critical)
 
     summary = _build_summary(

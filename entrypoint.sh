@@ -23,5 +23,9 @@ for _ in range(60):
         time.sleep(2)
 ' &
 
+if [ "$1" = "bot" ]; then
+    exec python -m bot.main
+fi
+
 echo "Starting ScamShield FastAPI application..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000

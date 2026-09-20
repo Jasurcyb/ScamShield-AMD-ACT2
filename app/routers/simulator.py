@@ -369,21 +369,40 @@ class ThreatRequest(BaseModel):
 
 class ThreatResponse(BaseModel):
     threat_id: str = Field(..., description="Unique simulation session ID")
+    session_id: Optional[str] = Field(None, description="Alias for threat_id")
     difficulty: str = Field(..., description="Threat difficulty tier")
     channel: str = Field(..., description="Delivery channel: email, sms, or chat")
     sender: str = Field(..., description="Sender name or address")
     subject: str = Field(..., description="Message subject line")
     body: str = Field(..., description="Simulated message content")
+    content: Optional[str] = Field(None, description="Alias for body")
 
 
 class RevealRequest(BaseModel):
-    threat_id: str = Field(..., description="Threat ID to reveal/evaluate")
-    user_says_scam: bool = Field(..., description="True if user classified as scam, False if legit")
+    threat_id: Optional[str] = Field(None, description="Threat ID to reveal/evaluate")
+    session_id: Optional[str] = Field(None, description="Alias for threat_id")
+    user_says_scam: Optional[bool] = Field(None, description="True if user classified as scam, False if legit")
+    user_guess: Optional[bool] = Field(None, description="Alias for user_says_scam")
+
+    def get_threat_id(self) -> str:
+        tid = self.threat_id or self.session_id
+        if not tid:
+            raise ValueError("Either threat_id or session_id must be provided.")
+        return tid
+
+    def get_user_guess(self) -> bool:
+        if self.user_says_scam is not None:
+            return bool(self.user_says_scam)
+        if self.user_guess is not None:
+            return bool(self.user_guess)
+        raise ValueError("Either user_says_scam or user_guess must be provided.")
 
 
 class RevealResponse(BaseModel):
     correct: bool = Field(..., description="Whether user's answer matched actual status")
+    user_correct: Optional[bool] = Field(None, description="Alias for correct")
     was_scam: bool = Field(..., description="True if simulated threat was a scam")
+    is_scam: Optional[bool] = Field(None, description="Alias for was_scam")
     indicators: List[str] = Field(..., description="Detected scam indicator list")
     tip: str = Field(..., description="Educational guidance note")
     explanation: str = Field(..., description="Human-readable summary of verdict")
@@ -399,13 +418,7 @@ def _get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "127.0.0.1"
 
 
-@router.post("/api/simulate/threat", response_model=ThreatResponse)
-@router.post("/simulate/threat", response_model=ThreatResponse)
-def generate_threat(req: ThreatRequest, request: Request):
-    """
-    Generates a simulated threat.
-    CRITICAL: Never returns is_scam or indicators in this response.
-    """
+def _generate_threat_payload(difficulty: str, request: Request) -> ThreatResponse:
     client_ip = _get_client_ip(request)
     if not rate_limiter.is_allowed(client_ip):
         raise HTTPException(
@@ -417,13 +430,12 @@ def generate_threat(req: ThreatRequest, request: Request):
     item: Optional[Dict[str, Any]] = None
     if os.getenv("OPENAI_API_KEY") and os.getenv("SIM_LLM") == "1":
         try:
-            # Safe attempt via existing provider or fallback
             pass
         except Exception as e:
             logger.warning("sim_llm_fallback: %s", e)
 
     # Deterministic selection from template bank
-    candidates = [t for t in TEMPLATE_BANK if t["difficulty"] == req.difficulty]
+    candidates = [t for t in TEMPLATE_BANK if t["difficulty"] == difficulty]
     if not candidates:
         candidates = TEMPLATE_BANK
 
@@ -449,12 +461,32 @@ def generate_threat(req: ThreatRequest, request: Request):
     # Return public response ONLY (strictly no is_scam, no indicators)
     return ThreatResponse(
         threat_id=threat_id,
+        session_id=threat_id,
         difficulty=item["difficulty"],
         channel=item["channel"],
         sender=item["sender"],
         subject=item["subject"],
         body=item["body"],
+        content=item["body"],
     )
+
+
+@router.get("/api/simulate/threat", response_model=ThreatResponse)
+@router.get("/simulate/threat", response_model=ThreatResponse)
+def generate_threat_get(request: Request, difficulty: Literal["easy", "medium", "hard"] = "medium"):
+    """GET endpoint to fetch a simulated threat."""
+    return _generate_threat_payload(difficulty, request)
+
+
+@router.post("/api/simulate/threat", response_model=ThreatResponse)
+@router.post("/simulate/threat", response_model=ThreatResponse)
+def generate_threat(request: Request, req: Optional[ThreatRequest] = None):
+    """
+    POST endpoint to fetch a simulated threat.
+    CRITICAL: Never returns is_scam or indicators in this response.
+    """
+    diff = req.difficulty if req else "medium"
+    return _generate_threat_payload(diff, request)
 
 
 @router.post("/api/simulate/answer", response_model=RevealResponse)
@@ -467,9 +499,14 @@ def reveal_threat(req: RevealRequest):
     Unknown or expired threat_id -> 410 Gone (or 404).
     Already revealed -> 409 Conflict.
     """
-    entry = session_store.get(req.threat_id)
+    try:
+        tid = req.get_threat_id()
+        user_guess = req.get_user_guess()
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    entry = session_store.get(tid)
     if not entry:
-        # HTTP 410 indicates expired or invalid session as specified in TLN Challenge rules
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail="Threat session has expired or does not exist. Please generate a new threat.",
@@ -483,7 +520,7 @@ def reveal_threat(req: RevealRequest):
         )
 
     # Mark as revealed
-    success = session_store.mark_revealed(req.threat_id)
+    success = session_store.mark_revealed(tid)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -491,7 +528,7 @@ def reveal_threat(req: RevealRequest):
         )
 
     was_scam = bool(entry["is_scam"])
-    correct = (req.user_says_scam == was_scam)
+    correct = (user_guess == was_scam)
     indicators = entry.get("indicators", [])
     tip = entry.get("tip", "")
 
@@ -514,9 +551,12 @@ def reveal_threat(req: RevealRequest):
 
     return RevealResponse(
         correct=correct,
+        user_correct=correct,
         was_scam=was_scam,
+        is_scam=was_scam,
         indicators=indicators,
         tip=tip,
         explanation=explanation,
         score=score,
     )
+
